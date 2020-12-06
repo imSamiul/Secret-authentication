@@ -10,9 +10,10 @@ const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
 const GoogleStrategy = require("passport-google-oauth20").Strategy; //Configuring our strategy.Using as Passport Strategy
 const findOrCreate = require("mongoose-findorcreate");
+const FacebookStrategy = require("passport-facebook").Strategy;
 
 app.use(express.static("public"));
-app.use(bodyParser.urlencoded({ extended: true })); 
+app.use(bodyParser.urlencoded({ extended: true }));
 //setup session(package)
 app.use(
   session({
@@ -37,7 +38,8 @@ mongoose.set("useCreateIndex", true);
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
-  googleId: String
+  googleId: String,
+  facebookId: String,
 });
 
 //useing Passport-Local-Mongoose as Mongoose Schema plugin
@@ -49,15 +51,15 @@ const User = new mongoose.model("User", userSchema);
 //Passport-Local-Mongoose configuration. Create local login straegy.
 passport.use(User.createStrategy()); //Local strategy to authenticate user using their username and password.
 //serialize and deserialize is only necessary when using session.
-passport.serializeUser(function(user, done) {
+passport.serializeUser(function (user, done) {
   done(null, user.id);
 });
 
-passport.deserializeUser(function(id, done) {
-  User.findById(id, function(err, user) {
+passport.deserializeUser(function (id, done) {
+  User.findById(id, function (err, user) {
     done(err, user);
   });
-}); 
+});
 
 //Seteing up google strategy and configuring it.
 passport.use(
@@ -65,10 +67,26 @@ passport.use(
     {
       clientID: process.env.CLIENT_ID,
       clientSecret: process.env.CLIENT_SECRET,
-      callbackURL: "http://localhost:3000/auth/google/secrets"
+      callbackURL: "http://localhost:3000/auth/google/secrets",
     },
     function (accessToken, refreshToken, profile, cb) {
       User.findOrCreate({ googleId: profile.id }, function (err, user) {
+        return cb(err, user);
+      });
+    }
+  )
+);
+
+////Seteing up Facebook strategy and configuring it.
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: process.env.FCLIENT_ID,
+      clientSecret: process.env.FCLIENT_SECRET,
+      callbackURL: "http://localhost:3000/auth/facebook/secrets",
+    },
+    function (accessToken, refreshToken, profile, cb) {
+      User.findOrCreate({ facebookId: profile.id }, function (err, user) {
         return cb(err, user);
       });
     }
@@ -85,9 +103,23 @@ app.get(
 
 app.get(
   "/auth/google/secrets",
-  passport.authenticate("google", { failureRedirect: "/login" }), //Authenticate user locally. 
+  passport.authenticate("google", { failureRedirect: "/login" }), //Authenticate user locally.
   function (req, res) {
     // Successful authentication, redirect to secrets.
+    res.redirect("/secrets");
+  }
+);
+
+app.get(
+  "/auth/facebook",
+  passport.authenticate("facebook")
+);
+
+app.get(
+  "/auth/facebook/secrets",
+  passport.authenticate("facebook", { failureRedirect: "/login" }),
+  function (req, res) {
+    // Successful authentication, redirect home.
     res.redirect("/secrets");
   }
 );
@@ -158,4 +190,3 @@ app.post("/login", function (req, res) {
 app.listen(3000, function () {
   console.log("Server Started at port 3000");
 });
-
