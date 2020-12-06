@@ -8,15 +8,16 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
+const GoogleStrategy = require("passport-google-oauth20").Strategy; //Configuring our strategy.Using as Passport Strategy
+const findOrCreate = require("mongoose-findorcreate");
 
 app.use(express.static("public"));
-app.use(bodyParser.urlencoded({ extended: true }));
-
+app.use(bodyParser.urlencoded({ extended: true })); 
 //setup session(package)
 app.use(
   session({
     // telling our app to use "session" package.
-    secret: "Our little Secret.", // keep secret in our environment file.
+    secret: process.env.SECRET, // keep secret in our environment file.
     resave: false,
     saveUninitialized: false,
   })
@@ -36,22 +37,60 @@ mongoose.set("useCreateIndex", true);
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
+  googleId: String
 });
 
 //useing Passport-Local-Mongoose as Mongoose Schema plugin
 userSchema.plugin(passportLocalMongoose); //"passportLocalMongoose" used to hash and salt password and save user into MongoDB database.
+userSchema.plugin(findOrCreate);
 
 const User = new mongoose.model("User", userSchema);
 
 //Passport-Local-Mongoose configuration. Create local login straegy.
 passport.use(User.createStrategy()); //Local strategy to authenticate user using their username and password.
 //serialize and deserialize is only necessary when using session.
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+passport.serializeUser(function(user, done) {
+  done(null, user.id);
+});
+
+passport.deserializeUser(function(id, done) {
+  User.findById(id, function(err, user) {
+    done(err, user);
+  });
+}); 
+
+//Seteing up google strategy and configuring it.
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.CLIENT_ID,
+      clientSecret: process.env.CLIENT_SECRET,
+      callbackURL: "http://localhost:3000/auth/google/secrets"
+    },
+    function (accessToken, refreshToken, profile, cb) {
+      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+        return cb(err, user);
+      });
+    }
+  )
+);
 
 app.get("/", function (req, res) {
   res.render("Home");
 });
+app.get(
+  "/auth/google",
+  passport.authenticate("google", { scope: ["profile"] }) //Initiate authintication with google.
+);
+
+app.get(
+  "/auth/google/secrets",
+  passport.authenticate("google", { failureRedirect: "/login" }), //Authenticate user locally. 
+  function (req, res) {
+    // Successful authentication, redirect to secrets.
+    res.redirect("/secrets");
+  }
+);
 app.get("/login", function (req, res) {
   res.render("Login");
 });
@@ -69,11 +108,12 @@ app.get("/secrets", function (req, res) {
     res.redirect("/login");
   }
 });
-app.get("/logout",function (req, res) {
+app.get("/logout", function (req, res) {
   //de-authenticate user and end user session. (http://www.passportjs.org/docs/logout/)
   req.logout();
-  res.redirect("/")
-}); 
+  res.redirect("/");
+});
+
 app.post("/register", function (req, res) {
   //Using Passport-Local-Mongoose package to register user. (https://www.npmjs.com/package/passport-local-mongoose)
   User.register(
@@ -118,3 +158,4 @@ app.post("/login", function (req, res) {
 app.listen(3000, function () {
   console.log("Server Started at port 3000");
 });
+
