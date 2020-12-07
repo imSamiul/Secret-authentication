@@ -1,8 +1,8 @@
-//jshint esversion:6
+/* eslint-disable no-undef */
 require("dotenv").config();
 const express = require("express");
 const bodyParser = require("body-parser");
-const ejs = require("ejs");
+require("ejs");
 const app = express();
 const mongoose = require("mongoose");
 const session = require("express-session");
@@ -160,7 +160,7 @@ app.post("/submit", function (req, res) {
   User.findByIdAndUpdate(
     {_id : req.user.id},
     { submittedSecret: secret },
-    function (err, foundUser) {
+    function (err) {
       if (err) {
         console.log(err);
       } else {
@@ -174,7 +174,7 @@ app.post("/register", function (req, res) {
   User.register(
     { username: req.body.username },
     req.body.password,
-    function (err, user) {
+    function (err) {
       if (err) {
         console.log(err);
         res.redirect("/register");
