@@ -28,18 +28,21 @@ app.use(
 app.use(passport.initialize()); //This is a method that comes bundled with passport and sets up passport for us to start using it for authintication.
 app.use(passport.session()); //Telling our app to use passport to also set up our session.
 
+
 mongoose.connect("mongodb://localhost:27017/userDB", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
 app.set("view engine", "ejs");
 mongoose.set("useCreateIndex", true);
+mongoose.set('useFindAndModify', false);
 
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
   googleId: String,
   facebookId: String,
+  submittedSecret: String,
 });
 
 //useing Passport-Local-Mongoose as Mongoose Schema plugin
@@ -110,10 +113,7 @@ app.get(
   }
 );
 
-app.get(
-  "/auth/facebook",
-  passport.authenticate("facebook")
-);
+app.get("/auth/facebook", passport.authenticate("facebook"));
 
 app.get(
   "/auth/facebook/secrets",
@@ -124,21 +124,22 @@ app.get(
   }
 );
 app.get("/login", function (req, res) {
-  res.render("Login");
+  res.render("login");
 });
 app.get("/register", function (req, res) {
-  res.render("Register");
+  res.render("register");
 });
 app.get("/secrets", function (req, res) {
   //Checking if the user is authenticatd or not , relying on "Passport", "Session", "Passport-Local", "Passport-Local-Mongoose".
   //to make sure that if the user is already logged in then we should render in the "Secrets" page.
   //if they are not logged in then we redirect them to the "Login" Page.
-
-  if (req.isAuthenticated()) {
-    res.render("secrets");
-  } else {
-    res.redirect("/login");
-  }
+  User.find().distinct("submittedSecret", function(err, foundSecrets) {
+    if (err) {
+      console.log(err);
+    } else {
+      res.render("secrets", {userWithSecrets: foundSecrets});
+    }
+});
 });
 app.get("/logout", function (req, res) {
   //de-authenticate user and end user session. (http://www.passportjs.org/docs/logout/)
@@ -146,6 +147,28 @@ app.get("/logout", function (req, res) {
   res.redirect("/");
 });
 
+app.get("/submit", function (req, res) {
+  if (req.isAuthenticated()) {
+    res.render("submit");
+  } else {
+    res.redirect("/login");
+  }
+});
+
+app.post("/submit", function (req, res) {
+  const secret = req.body.secret;
+  User.findByIdAndUpdate(
+    {_id : req.user.id},
+    { submittedSecret: secret },
+    function (err, foundUser) {
+      if (err) {
+        console.log(err);
+      } else {
+        res.redirect("/secrets");
+      }
+    }
+  );
+});
 app.post("/register", function (req, res) {
   //Using Passport-Local-Mongoose package to register user. (https://www.npmjs.com/package/passport-local-mongoose)
   User.register(
@@ -166,27 +189,13 @@ app.post("/register", function (req, res) {
     }
   );
 });
-app.post("/login", function (req, res) {
-  const user = new User({
-    username: req.body.username,
-    password: req.body.password,
-  });
-  //Using Passport to login this user and authenticate them.
-  //(http://www.passportjs.org/docs/login/)
-  //Using login method from passport.
-  req.login(user, function (err) {
-    //passing new User
-    if (err) {
-      console.log(err);
-    } else {
-      //Authenticating the user.
-      passport.authenticate("local")(req, res, function () {
-        //this will authenticate user using their password and username.
-        res.redirect("/secrets");
-      });
-    }
-  });
-});
+app.post(
+  "/login",
+  passport.authenticate("local", {
+    successRedirect: "/secrets",
+    failureRedirect: "/register",
+  })
+);
 app.listen(3000, function () {
   console.log("Server Started at port 3000");
 });
